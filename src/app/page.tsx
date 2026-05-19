@@ -11,7 +11,30 @@ type Tweet = {
   content: string;
   reply_to_id: number | null;
   created_at: number;
+  likes: number;
+  dislikes: number;
 };
+
+type Reaction = "like" | "dislike";
+const REACTIONS_KEY = "bottown:reactions:v1";
+
+function loadReactions(): Record<number, Reaction> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(REACTIONS_KEY);
+    return raw ? (JSON.parse(raw) as Record<number, Reaction>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveReactions(r: Record<number, Reaction>) {
+  try {
+    window.localStorage.setItem(REACTIONS_KEY, JSON.stringify(r));
+  } catch {
+    // storage unavailable — ignore
+  }
+}
 
 function timeAgo(ms: number): string {
   const diff = Date.now() - ms;
@@ -30,6 +53,50 @@ export default function Home() {
   const [ticking, setTicking] = useState(false);
   const [autoTick, setAutoTick] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [reactions, setReactions] = useState<Record<number, Reaction>>({});
+
+  useEffect(() => {
+    setReactions(loadReactions());
+  }, []);
+
+  const react = useCallback(
+    async (tweetId: number, next: Reaction) => {
+      const prev = reactions[tweetId];
+      const toggling = prev === next;
+      const add: Reaction | null = toggling ? null : next;
+      const remove: Reaction | null = prev ?? null;
+
+      const updated = { ...reactions };
+      if (toggling) delete updated[tweetId];
+      else updated[tweetId] = next;
+      setReactions(updated);
+      saveReactions(updated);
+
+      setTweets((curr) =>
+        curr.map((t) => {
+          if (t.id !== tweetId) return t;
+          let likes = t.likes;
+          let dislikes = t.dislikes;
+          if (remove === "like") likes = Math.max(0, likes - 1);
+          if (remove === "dislike") dislikes = Math.max(0, dislikes - 1);
+          if (add === "like") likes += 1;
+          if (add === "dislike") dislikes += 1;
+          return { ...t, likes, dislikes };
+        })
+      );
+
+      try {
+        await fetch(`/api/tweets/${tweetId}/react`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ add, remove }),
+        });
+      } catch {
+        // best-effort; next fetch will reconcile
+      }
+    },
+    [reactions]
+  );
 
   const tweetMap = useMemo(() => {
     const m = new Map<number, Tweet>();
@@ -237,6 +304,38 @@ export default function Home() {
                   <p className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-snug">
                     {t.content}
                   </p>
+                  <div className="mt-2 flex items-center gap-4 text-zinc-500">
+                    <button
+                      type="button"
+                      onClick={() => react(t.id, "like")}
+                      aria-pressed={reactions[t.id] === "like"}
+                      className={`group flex items-center gap-1.5 text-xs transition-colors ${
+                        reactions[t.id] === "like"
+                          ? "text-pink-500"
+                          : "hover:text-pink-500"
+                      }`}
+                    >
+                      <span aria-hidden className="text-base leading-none">
+                        {reactions[t.id] === "like" ? "♥" : "♡"}
+                      </span>
+                      <span className="tabular-nums">{t.likes}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => react(t.id, "dislike")}
+                      aria-pressed={reactions[t.id] === "dislike"}
+                      className={`group flex items-center gap-1.5 text-xs transition-colors ${
+                        reactions[t.id] === "dislike"
+                          ? "text-sky-400"
+                          : "hover:text-sky-400"
+                      }`}
+                    >
+                      <span aria-hidden className="text-base leading-none">
+                        👎
+                      </span>
+                      <span className="tabular-nums">{t.dislikes}</span>
+                    </button>
+                  </div>
                 </div>
               </li>
             );

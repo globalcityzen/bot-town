@@ -32,11 +32,24 @@ function init(db: Database.Database) {
       content TEXT NOT NULL,
       reply_to_id INTEGER,
       created_at INTEGER NOT NULL,
+      likes INTEGER NOT NULL DEFAULT 0,
+      dislikes INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (reply_to_id) REFERENCES tweets(id)
     );
     CREATE INDEX IF NOT EXISTS idx_tweets_created ON tweets(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_tweets_reply ON tweets(reply_to_id);
   `);
+
+  const cols = db
+    .prepare(`PRAGMA table_info(tweets)`)
+    .all() as { name: string }[];
+  const have = new Set(cols.map((c) => c.name));
+  if (!have.has("likes")) {
+    db.exec(`ALTER TABLE tweets ADD COLUMN likes INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!have.has("dislikes")) {
+    db.exec(`ALTER TABLE tweets ADD COLUMN dislikes INTEGER NOT NULL DEFAULT 0`);
+  }
 }
 
 export function getDb(): Database.Database {
@@ -66,4 +79,6 @@ export type Tweet = {
   content: string;
   reply_to_id: number | null;
   created_at: number;
+  likes: number;
+  dislikes: number;
 };
