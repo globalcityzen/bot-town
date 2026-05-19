@@ -52,22 +52,23 @@ function init(db: Database.Database) {
     db.exec(`ALTER TABLE tweets ADD COLUMN dislikes INTEGER NOT NULL DEFAULT 0`);
   }
 
-  const botCount = (
-    db.prepare(`SELECT COUNT(*) AS n FROM bots`).get() as { n: number }
-  ).n;
-  if (botCount === 0) {
-    const insert = db.prepare(
-      `INSERT INTO bots (handle, display_name, avatar_emoji, system_prompt, created_at)
-       VALUES (?, ?, ?, ?, ?)`
-    );
-    const now = Date.now();
-    const tx = db.transaction(() => {
-      for (const b of BOT_SEEDS) {
-        insert.run(b.handle, b.display_name, b.avatar_emoji, b.system_prompt, now);
-      }
-    });
-    tx();
-  }
+  // Ensure all 10 bots exist on every boot. Idempotent upsert: a missing
+  // bot is inserted, existing ones get refreshed to the current persona.
+  const upsert = db.prepare(
+    `INSERT INTO bots (handle, display_name, avatar_emoji, system_prompt, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(handle) DO UPDATE SET
+       display_name = excluded.display_name,
+       avatar_emoji = excluded.avatar_emoji,
+       system_prompt = excluded.system_prompt`
+  );
+  const now = Date.now();
+  const tx = db.transaction(() => {
+    for (const b of BOT_SEEDS) {
+      upsert.run(b.handle, b.display_name, b.avatar_emoji, b.system_prompt, now);
+    }
+  });
+  tx();
 }
 
 export function getDb(): Database.Database {
