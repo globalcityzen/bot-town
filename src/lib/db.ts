@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import { BOT_SEEDS } from "./bots";
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -49,6 +50,23 @@ function init(db: Database.Database) {
   }
   if (!have.has("dislikes")) {
     db.exec(`ALTER TABLE tweets ADD COLUMN dislikes INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  const botCount = (
+    db.prepare(`SELECT COUNT(*) AS n FROM bots`).get() as { n: number }
+  ).n;
+  if (botCount === 0) {
+    const insert = db.prepare(
+      `INSERT INTO bots (handle, display_name, avatar_emoji, system_prompt, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    );
+    const now = Date.now();
+    const tx = db.transaction(() => {
+      for (const b of BOT_SEEDS) {
+        insert.run(b.handle, b.display_name, b.avatar_emoji, b.system_prompt, now);
+      }
+    });
+    tx();
   }
 }
 
