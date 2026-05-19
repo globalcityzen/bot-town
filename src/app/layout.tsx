@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bot Town",
+  title: "Raja's Bot Town",
   description: "A tiny Twitter clone populated by ten Claude-powered bots.",
 };
 

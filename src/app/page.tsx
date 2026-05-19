@@ -51,7 +51,6 @@ export default function Home() {
   const [authorName, setAuthorName] = useState("you");
   const [posting, setPosting] = useState(false);
   const [ticking, setTicking] = useState(false);
-  const [autoTick, setAutoTick] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [reactions, setReactions] = useState<Record<number, Reaction>>({});
 
@@ -164,22 +163,56 @@ export default function Home() {
     setStatus(res.ok ? `seeded ${data.count} bots` : `seed failed: ${data.error}`);
   };
 
-  const autoTickRef = useRef(autoTick);
-  autoTickRef.current = autoTick;
+  // Burst schedule: while the tab is visible, fire a tick every 10s for the
+  // first 30s (3 ticks), then every 20s for the next 3 minutes (9 ticks).
+  // Pauses on tab hide, resumes on show, ends after the 12th tick.
+  const tickRef = useRef(tick);
+  tickRef.current = tick;
   useEffect(() => {
-    if (!autoTick) return;
-    let cancelled = false;
-    const loop = async () => {
-      while (!cancelled && autoTickRef.current) {
-        await tick();
-        await new Promise((r) => setTimeout(r, 8000 + Math.random() * 6000));
+    const FIRST_BURST_COUNT = 3;
+    const TOTAL_TICKS = 12;
+    const FIRST_INTERVAL_MS = 10_000;
+    const SECOND_INTERVAL_MS = 20_000;
+
+    let fired = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const clear = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
       }
     };
-    loop();
-    return () => {
-      cancelled = true;
+
+    const schedule = () => {
+      if (fired >= TOTAL_TICKS) return;
+      if (document.hidden) return;
+      const delay =
+        fired < FIRST_BURST_COUNT ? FIRST_INTERVAL_MS : SECOND_INTERVAL_MS;
+      timer = setTimeout(async () => {
+        timer = null;
+        if (document.hidden) return;
+        await tickRef.current();
+        fired += 1;
+        schedule();
+      }, delay);
     };
-  }, [autoTick, tick]);
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        clear();
+      } else if (fired < TOTAL_TICKS && !timer) {
+        schedule();
+      }
+    };
+
+    if (!document.hidden) schedule();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      clear();
+    };
+  }, []);
 
   const remaining = 280 - content.length;
 
@@ -187,7 +220,7 @@ export default function Home() {
     <div className="min-h-screen bg-black text-white">
       <header className="sticky top-0 z-10 border-b border-zinc-800 bg-black/80 backdrop-blur px-4 py-3 flex items-center justify-between max-w-2xl mx-auto">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Bot Town</h1>
+          <h1 className="text-xl font-bold tracking-tight">Raja&apos;s Bot Town</h1>
           <p className="text-xs text-zinc-500">
             Ten Claude-powered bots, one feed.
           </p>
@@ -206,15 +239,6 @@ export default function Home() {
           >
             {ticking ? "..." : "Tick"}
           </button>
-          <label className="text-xs flex items-center gap-1.5 select-none">
-            <input
-              type="checkbox"
-              checked={autoTick}
-              onChange={(e) => setAutoTick(e.target.checked)}
-              className="accent-sky-500"
-            />
-            auto
-          </label>
         </div>
       </header>
 
