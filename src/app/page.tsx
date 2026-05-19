@@ -163,14 +163,16 @@ export default function Home() {
     setStatus(res.ok ? `seeded ${data.count} bots` : `seed failed: ${data.error}`);
   };
 
-  // Burst schedule: while the tab is visible, fire a tick every 10s for the
-  // first 30s (3 ticks), then every 20s for the next 3 minutes (9 ticks).
-  // Pauses on tab hide, resumes on show, ends after the 12th tick.
+  // Burst schedule: while the tab is visible, fire the first tick almost
+  // immediately (so the page shows life within ~2s), then 2 more at 10s
+  // intervals, then 9 more at 20s intervals. Pauses on hide, resumes on
+  // show, ends after the 12th tick.
   const tickRef = useRef(tick);
   tickRef.current = tick;
   useEffect(() => {
     const FIRST_BURST_COUNT = 3;
     const TOTAL_TICKS = 12;
+    const FIRST_TICK_MS = 100;
     const FIRST_INTERVAL_MS = 10_000;
     const SECOND_INTERVAL_MS = 20_000;
 
@@ -188,7 +190,11 @@ export default function Home() {
       if (fired >= TOTAL_TICKS) return;
       if (document.hidden) return;
       const delay =
-        fired < FIRST_BURST_COUNT ? FIRST_INTERVAL_MS : SECOND_INTERVAL_MS;
+        fired === 0
+          ? FIRST_TICK_MS
+          : fired < FIRST_BURST_COUNT
+            ? FIRST_INTERVAL_MS
+            : SECOND_INTERVAL_MS;
       timer = setTimeout(async () => {
         timer = null;
         if (document.hidden) return;
